@@ -1,0 +1,43 @@
+\chapter{Literature Review}
+
+\section{ZephyrOS}
+
+The \textbf{Zephyr Project} provides a scalable, open-source Real-Time Operating System (RTOS) engineered for resource-constrained embedded systems, from low-power IoT nodes to complex edge computing devices~\cite{source}. Governed by the \textbf{Linux Foundation}~\cite{source}, it is developed primarily for IoT applications with a strong emphasis on security, portability, and long-term support~\cite{source}.
+
+\subsection{West}
+
+A Zephyr project is managed using \textbf{West}, a command-line meta-tool designed to handle the multi-repository nature of the ecosystem. West creates and manages a \textit{workspace}, which is a top-level directory containing all Git repositories required for a project, including the core Zephyr RTOS, external modules, and the user's application code.
+
+The workspace is organized around a central \textit{manifest repository}, which for a typical application is the repository containing the developer's primary source code. This repository must contain a \texttt{west.yml} file, which serves as the manifest. This file acts as a \textit{"bill of materials,"} explicitly defining all project dependencies. For each dependency, the manifest specifies the Git repository to be cloned and, critically, the exact revision (a specific commit, tag, or branch) to be used. This practice ensures that every developer on a project can create an identical and reproducible development environment.
+
+A manifest file is structured in YAML. For example:
+
+\begin{verbatim}
+manifest:
+  remotes:
+    # Defines shortcuts for base URLs
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+    - name: your-github-account
+      url-base: https://github.com/your-name
+      
+  projects:
+    # Defines the main Zephyr repository as a dependency
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: main
+      path: zephyr
+
+  self:
+    # Describes this manifest's repository itself
+    path: my-cool-app
+\end{verbatim}
+
+To create a new workspace from such a project, a developer uses the \texttt{west init} command, pointing it to the manifest repository. This command creates the workspace directory and clones the manifest repository itself. For a manifest located at \texttt{https://github.com/your-name/my-cool-app}, the command would be:
+
+\begin{verbatim}
+west init -m https://github.com/your-name/my-cool-app --mr main my-project-workspace
+\end{verbatim}
+
+After initialization, the developer navigates into the new directory and runs \texttt{west update}. This command reads the \texttt{west.yml} manifest that was just cloned. It then proceeds to synchronize the workspace by cloning all the other repositories listed in the \texttt{projects:} section—in this case, it would clone the main \texttt{zephyr} repository into the \texttt{zephyr/} directory. This ensures the entire workspace is in the exact state defined by the manifest.
+

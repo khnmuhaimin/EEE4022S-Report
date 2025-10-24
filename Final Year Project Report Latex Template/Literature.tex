@@ -2,42 +2,138 @@
 
 \section{ZephyrOS}
 
-The \textbf{Zephyr Project} provides a scalable, open-source Real-Time Operating System (RTOS) engineered for resource-constrained embedded systems, from low-power IoT nodes to complex edge computing devices~\cite{source}. Governed by the \textbf{Linux Foundation}~\cite{source}, it is developed primarily for IoT applications with a strong emphasis on security, portability, and long-term support~\cite{source}.
+The \textbf{Zephyr Project} provides a scalable, open-source Real-Time Operating System (RTOS) engineered for resource-constrained embedded systems, from low-power IoT nodes to complex edge computing devices~\cite{zephyr_intro}. Governed by the \textbf{Linux Foundation}~\cite{zephyr_website}, it is developed primarily for IoT applications with a strong emphasis on security, portability, and long-term support~\cite{zephyr_intro}.
 
-\subsection{West}
+\section{West}
 
-A Zephyr project is managed using \textbf{West}, a command-line meta-tool designed to handle the multi-repository nature of the ecosystem. West creates and manages a \textit{workspace}, which is a top-level directory containing all Git repositories required for a project, including the core Zephyr RTOS, external modules, and the user's application code.
+A Zephyr project is managed using \textbf{West}, a command-line meta-tool designed to handle the multi-repository nature of the ecosystem. West creates and manages a \textit{workspace}, which is a top-level directory containing all Git repositories required for a project, including the core Zephyr RTOS, external modules, and the user's application code~\cite{zephyr_west}.
 
-The workspace is organized around a central \textit{manifest repository}, which for a typical application is the repository containing the developer's primary source code. This repository must contain a \texttt{west.yml} file, which serves as the manifest. This file acts as a \textit{"bill of materials,"} explicitly defining all project dependencies. For each dependency, the manifest specifies the Git repository to be cloned and, critically, the exact revision (a specific commit, tag, or branch) to be used. This practice ensures that every developer on a project can create an identical and reproducible development environment.
+The workspace is organized around a central \textit{manifest repository}, which for a typical application is the repository containing the developer's primary source code. This repository must contain a \texttt{west.yml} file, which serves as the manifest. This file acts as a \textit{"bill of materials,"} explicitly defining all project dependencies. For each dependency, the manifest specifies the Git repository to be cloned and, critically, the exact revision (a specific commit, tag, or branch) to be used. This practice ensures that every developer on a project can create an identical and reproducible development environment~\cite{zephyr_west}.
 
 A manifest file is structured in YAML. For example:
 
-\begin{verbatim}
+\medskip
+
+\begin{lstlisting}[language=yaml]
 manifest:
+  # Optional aliases for remote repositories
   remotes:
-    # Defines shortcuts for base URLs
     - name: zephyrproject-rtos
       url-base: https://github.com/zephyrproject-rtos
     - name: your-github-account
       url-base: https://github.com/your-name
-      
+
+  # Dependencies required by the manifest repository
   projects:
-    # Defines the main Zephyr repository as a dependency
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: main
+      revision: v4.2.0  # Locks the dependency to a specific version
       path: zephyr
 
+  # Path to the manifest repository containing project source code
   self:
-    # Describes this manifest's repository itself
-    path: my-cool-app
-\end{verbatim}
+    path: manifest-repo-path
+\end{lstlisting}
 
-To create a new workspace from such a project, a developer uses the \texttt{west init} command, pointing it to the manifest repository. This command creates the workspace directory and clones the manifest repository itself. For a manifest located at \texttt{https://github.com/your-name/my-cool-app}, the command would be:
 
-\begin{verbatim}
-west init -m https://github.com/your-name/my-cool-app --mr main my-project-workspace
-\end{verbatim}
+To create a new workspace from such a project, a developer uses the \texttt{west init} command, pointing it to the manifest repository. This command creates the workspace directory and clones the manifest repository itself ~\cite{zephyr_west}. For a manifest located at \url{https://github.com/your-name/manifest-repo}, the command would be:
 
-After initialization, the developer navigates into the new directory and runs \texttt{west update}. This command reads the \texttt{west.yml} manifest that was just cloned. It then proceeds to synchronize the workspace by cloning all the other repositories listed in the \texttt{projects:} section—in this case, it would clone the main \texttt{zephyr} repository into the \texttt{zephyr/} directory. This ensures the entire workspace is in the exact state defined by the manifest.
+\medskip
 
+\begin{lstlisting}[language=bash]
+west init -m https://github.com/your-name/manifest-repo --mr main west-workspace-path
+\end{lstlisting}
+
+After initialization, the developer navigates into the new directory and runs \texttt{west update}. This command reads the \texttt{west.yml} manifest that was just cloned. It then proceeds to synchronize the workspace by cloning all the other repositories listed in the \texttt{projects:} section—in this case, it would clone the main \texttt{zephyr} repository into the \texttt{zephyr/} directory. This ensures the entire workspace is in the exact state defined by the manifest ~\cite{zephyr_west}.
+
+\section{Sockets Programming in Zephyr: The POSIX API}
+
+Zephyr adopts the POSIX Socket API as its primary interface for network communication, aligning it closely with established UNIX-like networking paradigms. This design choice enhances portability and lowers the barrier to entry for developers familiar with Linux or other POSIX systems~\cite{zephyr_sockets_api}. This abstraction helps decouple applications from the underlying RTOS and hardware, promoting portability across embedded platforms.
+
+Zephyr's networking subsystem supports three primary socket types: SOCK\_STREAM, SOCK\_DGRAM, and SOCK\_RAW~\cite{zephyr_sockets_api}. SOCK\_STREAM provides a reliable, connection-oriented byte stream backed by TCP, ensuring ordered delivery and retransmission of lost packets. SOCK\_DGRAM offers a lightweight, connectionless service backed by UDP, suitable for latency-sensitive or low-power IoT communication where some data loss is acceptable~\cite{oracle_sockets}. SOCK\_RAW, by contrast, allows applications to access lower-level network protocols directly, bypassing TCP and UDP. While it can be useful for network diagnostics or implementing custom protocols, it is generally avoided in typical applications due to complexity, lack of built-in reliability, and potential security and portability issues~\cite{raw_sockets_limitations}.
+
+The choice between these socket types for IoT applications, particularly for critical tasks like Firmware Over-The-Air (FOTA) updates, hinges on a trade-off between ease of use and granular control. TCP offers the highest reliability with the least application-level effort, making it a safe choice for FOTA where a single corrupted or lost packet could render a device inoperable. However, this reliability comes at the cost of significant overhead from its connection handshake, acknowledgements, and flow control mechanisms, which can be inefficient for power- and memory-constrained IoT devices~\cite{iot_book_protocols}. On the opposite end of the spectrum, raw sockets provide maximum control and minimal overhead, but shift the entire burden of ensuring reliability and packet sequencing onto the developer—a complex and error-prone task which is why raw socket networking is generally avoided~\cite{raw_sockets_limitations}. UDP sits in a practical middle ground, offering low overhead but no inherent reliability~\cite{iot_book_protocols}. To address this, IoT-specific protocols like CoAP (Constrained Application Protocol) are designed to run on top of UDP. CoAP reintroduces essential features like optional acknowledgements and request/response semantics, effectively creating a lightweight, reliable messaging layer suitable for constrained environments~\cite{coap_rfc}. This layered approach makes UDP a highly attractive foundation for modern IoT applications, providing efficiency without forcing developers to manage the complexities of raw sockets~\cite{iot_book_protocols}.
+
+\section{Device Driver Model}
+
+The Zephyr device driver model is predicated on the principle of hardware abstraction. Its primary goal is to wrap complex, low-level hardware interactions, such as direct bit manipulation of memory-mapped registers, within a high-level, standard API. This API is specific to the class of peripheral, providing a consistent interface for all devices of a certain type. For instance, all UART drivers, regardless of the vendor, expose the same set of functions, such as \texttt{uart\_tx()} for transmitting data and \texttt{uart\_rx()} for receiving data. An application written using these functions can therefore work with any supported UART hardware without modification~\cite{zephyr_device_driver_model}.
+
+Based on my analysis of the Zephyr source and documentation, the driver model supports composition, allowing a high-level driver to leverage a lower-level one while abstracting its details from the application. For instance, a cellular modem driver handles AT commands and network interfaces but relies on the standard UART driver for byte-level communication. This layering conceals the underlying transport, so the application interacts with the modem through a high-level network socket without needing to know the specifics of the UART implementation~\cite{zephyr_device_driver_model}.
+
+This layered relationship is explicitly described in the Devicetree through a hierarchical structure of nested nodes. A device that is physically connected to or dependent on another is represented as a child node. Crucially, both the inner (parent) and outer (child) device nodes are assigned a \texttt{compatible} property, which is a string that uniquely identifies the hardware. The Zephyr build system uses this property to bind the correct driver to each respective layer of the hardware stack, creating a fully initialized, multi-layered device~\cite{zephyr_device_driver_model}.
+
+An understanding of this driver model is therefore of direct practical importance. Any high-level functionality, such as a FOTA update, is ultimately dependent on the correct configuration of the underlying physical hardware. This requires a properly defined Devicetree that describes the communication peripheral and its relationship to the system, making knowledge of the driver model a prerequisite for successful hardware integration.
+
+\section{MCUboot Bootloader}
+
+MCUboot is an open-source secure bootloader used by Zephyr to manage firmware updates on IoT devices~\cite{mcuboot_design}. It ensures that only verified firmware runs on the device, providing a critical layer of security and reliability for remote deployments.
+
+MCUboot typically uses a **two-slot memory layout**:  
+\begin{itemize}
+    \item \textbf{Primary Slot:} Contains the currently running, verified firmware.  
+    \item \textbf{Secondary Slot:} Stores a new firmware image downloaded via an OTA method.  
+\end{itemize}
+
+On reboot, MCUboot verifies the new image’s cryptographic signature before swapping it into the primary slot. If the new firmware fails self-tests, MCUboot automatically **rolls back** to the previous version, ensuring the device remains operational.
+
+This mechanism is essential to all Zephyr-supported FOTA methods, as it separates **firmware transport** from **secure installation**. For our project, MCUboot provides a reliable, failsafe foundation for implementing remote OTA updates.
+
+
+\section{Device Management in Zephyr}
+
+Over-the-Air (OTA) update is the process of delivering new firmware to a remote device over a network connection. While the name implies a wireless medium, the term is commonly used for both wireless and wired updates. The core function of an OTA process is to securely transport a new firmware image from a server infrastructure to the target device~\cite{zephyr_ota_updates}.
+
+In the Zephyr ecosystem, the OTA process is distinct from the firmware installation itself. The OTA client running on the device is responsible for downloading the new firmware binary and storing it in a secondary memory slot (e.g., \texttt{slot1\_partition}). Once the download is complete, the update is staged. On the next reboot, the MCUboot bootloader takes control. MCUboot's role is to cryptographically verify the new image's signature before performing the swap operation~\cite{mcuboot_design}. This separation of concerns is critical: the OTA mechanism handles the transport of the firmware, while MCUboot handles the secure verification and activation, providing a robust and failsafe update process.
+
+Zephyr officially supports several OTA update mechanisms~\cite{zephyr_fota_overview}. Table~\ref{tab:fota_comparison} summarizes the five mechanisms relevant to remote IoT deployments, using three key criteria for comparison.
+
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.18\textwidth}
+                  >{\raggedright\arraybackslash}p{0.25\textwidth}
+                  >{\raggedright\arraybackslash}p{0.18\textwidth}
+                  >{\raggedright\arraybackslash}p{0.18\textwidth}@{}}
+\hline
+\textbf{Mechanism} & \textbf{Ease of Setup / Zephyr Integration} & \textbf{Remote Update Support} & \textbf{Freeness / Licensing} \\
+\hline
+UpdateHub & Setup requires installation and configuration; official Zephyr sample available & Needs further exploring & Open source Community Edition + proprietary Cloud service \\
+\hline
+Eclipse hawkBit™ & Setup requires installation and configuration; official Zephyr sample available & Needs further exploring & Fully open source (EPL) \\
+\hline
+SMP Server & Setup requires installation and configuration; official Zephyr sample available & Needs further exploring & Fully open source \\
+\hline
+Golioth & Setup requires installation and configuration; example provided in SDK repo & Needs further exploring & Proprietary (free developer tier) \\
+\hline
+LwM2M & Setup requires installation and configuration; Zephyr support available, no sample & Needs further exploring & Open standard (OMA SpecWorks) \\
+\hline
+\end{tabular}
+\caption{Comparison of Zephyr-supported FOTA mechanisms with explicit gaps noted for further exploration}
+\label{tab:fota_comparison}
+\end{table}
+
+
+For remote IoT deployments, \textbf{UpdateHub} and \textbf{Golioth} are the most practical FOTA mechanisms due to their cloud-managed architectures and ease of integration. \textbf{HawkBit} is suitable for self-hosted control, while \textbf{SMP Server} is mainly relevant for local updates. \textbf{LwM2M} offers standards-based remote update potential but lacks turnkey Zephyr support.
+
+\section{Network Selection Strategies in Heterogeneous Environments}
+
+The challenge of ensuring seamless and efficient connectivity in heterogeneous wireless environments, which typically integrate cellular (e.g., 5G, LTE) and Wi-Fi networks, has been a significant area of research. A primary focus has been the development of intelligent network selection algorithms that can dynamically choose the optimal network based on a variety of factors. These strategies have evolved from straightforward, function-based models, which rely on static parameters, to more complex, adaptive systems that incorporate dynamic network conditions, user preferences, and machine learning. This review deconstructs these approaches by focusing on four key technical aspects: the criteria used for switching, the formulation of cost functions, methods for mitigating frequent, disruptive handovers (a phenomenon known as the "ping-pong effect"), and the techniques used to measure the decision parameters.
+
+\subsection{Switching Criteria and Triggers}
+
+The trigger for initiating a network handover—the process of transferring an ongoing connection from one network to another—is a critical component of any selection algorithm. In traditional cost-based models, such as the one proposed by Zhang et al., the primary switching criterion is a change in the calculated cost score. A handover is initiated simply when an alternative network presents a lower overall cost than the currently connected one~\cite{zhang2015}. Navaratnarajah et al. employ a similar logic but based on a utility function; a switch is considered when another network offers a higher utility score, with a specific focus on changes in network congestion and user density as key triggering conditions~\cite{navaratnarajah2017}.
+
+Moving beyond purely network-centric triggers, Li et al. introduce user-oriented criteria. In their model, a switch may be triggered not only by changing network conditions but also by a change in the user's context or active application. For instance, launching a high-bandwidth video game could trigger a re-evaluation of networks based on a new preference for low latency, even if the underlying network conditions have not changed~\cite{li2018}. In the most adaptive approach, Sun uses a Q-learning model, a form of model-free reinforcement learning, where the switching criteria are not based on a simple threshold. Instead, the decision to switch is determined by the learned policy of a reinforcement learning agent, which seeks to maximize a cumulative long-term reward. The trigger is effectively the agent's prediction that a switch will yield a better future outcome based on its past experiences~\cite{sun2019}.
+
+\subsection{Cost and Utility Function Formulation}
+
+The method of quantifying a network's value is central to the selection process. The cost function from Zhang et al. is a clear example of a Multi-Attribute Decision Making (MADM) approach, a method for evaluating options based on multiple, often conflicting, criteria. In this context, parameters like available bandwidth, signal strength, monetary cost, delay, and jitter are aggregated into a single composite score, often through a weighted sum~\cite{zhang2015}. The work by Navaratnarajah et al. formulates this as a utility function, with the novel inclusion of real-time network load and user density as key input parameters. This makes their function dynamic and responsive to immediate congestion~\cite{navaratnarajah2017}.
+
+The model from Li et al. also uses a weighted function, but its main contribution is that the weights themselves are dynamic and depend on user preferences. The function is customized in real-time based on whether the user prioritizes cost, speed, or security for their current application~\cite{li2018}. In contrast, the Q-learning approach by Sun does not use an explicit, predefined cost function. Instead, it relies on a reward function. The system makes a decision, observes the outcome (e.g., actual throughput and stability), and receives a reward or penalty. The algorithm's goal is to learn a policy that maximizes this reward over time, effectively creating an implicit, experience-based value function for each state-action pair (a specific situation and the action taken in that situation)~\cite{sun2019}.
+
+\subsection{Hysteresis and Ping-Pong Effect Mitigation}
+
+To prevent frequent, disruptive handovers (the "ping-pong" effect) caused by minor fluctuations in network quality, a hysteresis mechanism is essential. Hysteresis involves adding a buffer to the decision-making process to ensure stability. In the function-based approaches of Zhang et al., Navaratnarajah et al., and Li et al., this is typically implemented by adding a hysteresis margin. A switch is only performed if the new network is not just marginally better, but better by a predefined threshold amount, ensuring that the decision is robust against noise in the measurements~\cite{zhang2015, navaratnarajah2017, li2018}. Sun's Q-learning model addresses this implicitly. The reinforcement learning agent naturally learns to avoid rapid switching because handover-related delays and potential connection failures result in lower cumulative rewards. Therefore, the agent's learned policy inherently penalizes the instability of frequent switching without needing a fixed, manually-tuned hysteresis margin~\cite{sun2019}.
+Parameter Measurement and Estimation
+
+The effectiveness of any selection algorithm depends on the ability to accurately measure its input criteria. The models from Zhang et al. and Li et al. rely on parameters that are typically measurable at the device level using standard operating system APIs (Application Programming Interfaces), which are protocols that allow different software components to communicate with each other~\cite{zhang2015, li2018}. The congestion-aware model from Navaratnarajah et al. requires more sophisticated measurement techniques to ascertain real-time network load and user density. This could involve communication with network access points or inter-device communication to estimate local congestion, moving beyond simple client-side measurements~\cite{navaratnarajah2017}. The system proposed by Sun requires two types of measurement: first, it needs the standard network parameters to feed into its MADM component for initial ranking; second, and more critically, it must be able to measure the performance outcome (e.g., realized throughput, connection drops) after a decision is made to provide a feedback signal for the Q-learning reward function~\cite{sun2019}.

@@ -1,0 +1,336 @@
+\chapter{Setup}
+
+% \section{Functional Objective and System Requirements}
+% \label{sec:objective}
+% 
+% The central aim of this project is to build an intelligent, self-managing networking system for an embedded device. This system's purpose is to ensure that the device always stays connected by automatically choosing the best available network path.
+
+% \subsection{Adaptive Network Wrapper: Core Function}
+% The system's primary component is a custom network wrapper that intercepts all outbound application-level network requests. This wrapper must function as an intermediary, routing traffic through one of two configured internal network paths: a high-throughput Wi-Fi connection or a reliable GSM connection.
+
+% \subsubsection{Design Requirements}
+% The wrapper's design is driven by the following functional and architectural requirements:
+
+% \begin{itemize}
+%     \item \textbf{Route Abstraction:} The system must expose a unified $\text{API}$ (Application Programming Interface) to the application programmer that is functionally equivalent to standard socket operations (e.g., connect, send, receive). The application must remain agnostic to the underlying network interface selection or dynamic switching events.
+%     \item \textbf{Interface Compatibility:} The system requires two internal network routes that are compatible with the host operating system's networking stack. In this project, the implementation is built upon the existing networking framework provided by the $\text{Zephyr RTOS}$.
+%     \item \textbf{Selection Logic:} The wrapper must contain adaptive logic to select the optimal route based on configurable criteria, such as interface availability, connection stability, or pre-defined preference.
+%     \item \textbf{Modular Expansion:} The architecture must be sufficiently modular to allow the future integration of additional network routes (e.g., $\text{Ethernet}$, $\text{BLE}$) with minimal modification to the core routing logic.
+% \end{itemize}
+
+% \subsection{Test Case: Firmware Over-the-Air (FOTA) Update}
+% The operational success of the adaptive network wrapper will be verified using a highly demanding real-world test case: a $\text{FOTA}$ (Firmware Over-the-Air) update.
+
+% \begin{itemize}
+%     \item \textbf{Verification Criterion:} A successful $\text{FOTA}$ update requires a sustained, reliable network connection to download a new application image from a remote server.
+%     \item \textbf{Functional Proof:} The update process must complete successfully even when the primary network route ($\text{Wi-Fi}$) is deliberately disabled during the download. This demonstrates the wrapper's ability to transparently failover to the $\text{GSM}$ route and maintain the session integrity required for the $\text{FOTA}$ transaction.
+%     \item \textbf{Test Payload:} The update will transition the $\text{microcontroller}$ from a basic slow-blinking $\text{LED}$ application to a fast-blinking $\text{LED}$ application, providing clear visual confirmation of the successful firmware transfer and execution.
+% \end{itemize}
+
+\section{Hardware Description}
+\label{sec:hardware}
+
+The adaptive networking solution was developed and validated on a custom hardware platform integrating a host microcontroller unit (MCU) running the Zephyr RTOS and an external cellular modem responsible for network offloading.
+
+\subsection{Microcontroller Unit}
+\label{ssec:mcu}
+The host MCU responsible for executing the application code is an Espressif ESP32-DOIT Development Board.
+
+\begin{itemize}
+    \item \textbf{SoC:} Espressif ESP32 dual-core Wi-Fi/Bluetooth Chip.
+    \item \textbf{Role:} Serves as the main processing unit and provides the Wi-Fi hardware.
+    \item \textbf{Power Requirement:} The board is powered via its Micro-USB port, requiring a nominal 5V supply. The max operating current for the host MCU (including the Wi-Fi radio) is XXX, which is easily sourced from a standard 5V power adapter or computer USB port.
+    \item \textbf{Status Indicators:} The onboard LED was utilized for general application status feedback.
+\end{itemize}
+
+\subsection{Cellular Modem}
+\label{ssec:modem}
+The cellular modem is the SIMCom A7670G. This module is utilized to establish and manage the cellular data connection for the GSM network route.
+
+\begin{itemize}
+    \item \textbf{Module:} SIMCom A7670G.
+    \item \textbf{Form Factor:} The module was mounted on a generic breakout board. Communication and control were achieved using standard AT Command protocol over a Universal Asynchronous Receiver/Transmitter (UART) interface.
+    \item \textbf{Antenna:} A cellular antenna was connected to the module via a standard U.FL connector for reception and transmission.
+    \item \textbf{Subscriber Identity:} A provisioned \textbf{SIM card} was required and inserted into the board's slot to establish a cellular data connection.
+    \item \textbf{Status Indicators:} The module includes dedicated onboard LEDs to indicate its operational status: not powered, powered but idle, searching for network, and connected to the network.
+\end{itemize}
+
+\subsection{Inter-Module Communication}
+The host ESP32 and the A7670 module were interfaced through the following pins:
+
+\begin{table}[H]
+    \centering
+    \caption{Inter-Module Connection Summary}
+    \label{tab:connections}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{>{\raggedright\arraybackslash}p{3cm} 
+                    >{\raggedright\arraybackslash}p{3cm} 
+                    >{\raggedright\arraybackslash}p{8cm}}
+        \hline
+        \textbf{ESP32 Pin} & \textbf{A7670G Pin} & \textbf{Function} \\
+        \hline
+        RX2 & TXD & Serial data reception on ESP32, receiving AT command responses and unsolicited data from the modem. \\
+        TX2 & RXD & Serial data transmission from ESP32, used to send AT commands to the modem. \\
+        GPIO4 & PEN (Power Enable) & Control pin for power cycling the modem. Pulling this pin to GND initiates a hardware reset/restart sequence. \\
+        GND & GND & Establishes a common ground reference between the ESP32 and the modem for stable UART communication and power circuits. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+
+\subsection{Power Supply}
+\label{ssec:power}
+The system requires two separate power feeds to accommodate the distinct current demands of the host microcontroller and the cellular modem.
+
+\begin{itemize}
+    \item \textbf{Host Microcontroller Power (ESP32):} The ESP32 development board is powered through its dedicated Micro-USB port using a 5V supply. The maximum current requirement for the ESP32 (when utilizing Wi-Fi) is approximately 500 mA. This low requirement means a standard computer USB port is sufficient to reliably power the host unit.
+
+    \item \textbf{Cellular Modem Power (A7670G):} The A7670G modem requires a dedicated 5V supply capable of delivering peak currents up to 2A during cellular transmission bursts.
+
+    \item \textbf{Decoupling Capacitance:} The modem's high instantaneous current draw poses significant power management challenges, often leading to voltage drop (commonly known as brown-out conditions) that can cause modem resets. To guarantee stability and hardware reliability, an extensive array of decoupling capacitors was implemented.
+
+    \item \textbf{Capacitor Bank:} The design significantly exceeded the manufacturer's suggested minimum of 300 $\mu$F for voltage stability. The implemented capacitor bank utilizes:
+    \begin{itemize}
+        \item Two 4700$\mu$F aluminum electrolytic capacitors for bulk energy storage.
+        \item Twelve 100nF ceramic capacitors for high-frequency noise suppression.
+    \end{itemize}
+    These components were soldered as close as possible to the modem board's VIN and GND pins. This physical proximity is critical to minimize parasitic inductance and resistance in the trace, allowing the capacitors to supply the high, sudden current peaks immediately and maintain the required stable voltage rail.
+\end{itemize}
+
+\subsection{Physical Assembly and Debugging}
+\label{ssec:assembly}
+The ESP32 and A7670G boards, along with the capacitors, were mounted onto a common stripboard base. Female pin headers were soldered onto the stripboard for both modules, facilitating non-permanent connections and easy rearrangement using male-to-male jumper wires. The capacitors were soldered directly with substantial solder to ensure robust, low-resistance connections. Two separate Micro-USB cables were used to power the ESP32 and the A7670G module's power circuit independently. A laptop was used to monitor logs from the ESP32 using UART for debugging the application.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{placeholder.jpg}
+    \caption{Circuit diagram illustrating the physical interconnections between the ESP32, the A7670G modem, and the decoupling capacitor bank. Essential connections for UART communication and modem power control (PEN) are highlighted.}
+    \label{fig:hardware-schematic}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    % First minipage for the image with boards plugged in
+    \begin{minipage}{0.48\textwidth} % Adjust width as needed (e.g., 0.48 for slight gap)
+        \centering
+        \includegraphics[width=\linewidth]{placeholder.jpg} % Replace with actual filename
+        \caption{Final hardware assembly showing the ESP32 (left) and A7670G (right) modules with the jumper connections between them.}
+        \label{fig:hardware-photo-modules}
+    \end{minipage}
+    \hfill % This command adds horizontal space, pushing minipages apart
+    % Second minipage for the image showing capacitors
+    \begin{minipage}{0.48\textwidth} % Same width as the first
+        \centering
+        \includegraphics[width=\linewidth]{placeholder.jpg} % Replace with actual filename
+        \caption{Underlying stripboard assembly with modules removed showing the capacitors close to the power pins of the A7670G board.}
+        \label{fig:hardware-photo-caps}
+    \end{minipage}
+\end{figure}
+
+\section{Development Environment}
+
+\subsection{Justification for Using Podman}
+
+For this project, the primary requirement is a simple, efficient, and effective tool to create an isolated environment that ensures reproducible results. After evaluating traditional Virtual Machines (VMs), Docker, and Podman, we selected Podman as the most suitable solution. Its core advantage is providing the necessary environment isolation for reproducibility without the overhead of full virtualization or the architectural complexities of a daemon-based container engine.
+
+Traditional VMs offer the highest level of isolation by virtualizing an entire hardware stack and running a full guest operating system. While this guarantees a completely separate environment, it comes at a significant cost in terms of performance, disk space, and startup time~\cite{ibm_containers_vs_vms}. For this project, which focuses on application-level reproducibility, such heavy-handed isolation is unnecessary and counterproductive.
+
+Both Docker and Podman provide lightweight OS-level virtualization (containerization), which is better suited to our needs. They offer nearly identical interfaces, packaging an application and its dependencies into a container that runs on the host operating system's kernel. However, a key architectural difference makes Podman the simpler and more secure choice. Docker relies on a continuously running background daemon process (\texttt{dockerd}) with root privileges, introducing a single point of failure and potential security concerns~\cite{docker_overview, podman_overview}.
+
+In contrast, Podman employs a daemonless architecture~\cite{podman_overview}, running containers as child processes of the user's login session and eliminating the need for a persistent, privileged background service.
+
+While both Docker and Podman meet the project’s requirements, Podman’s simpler and more secure design makes it the preferred choice. The entire development and build workflow for this project is executed within a Podman container. See [provide instructions or appendix] for detailed container setup and configuration.
+
+\section{Containerized Workspace Setup}
+
+To guarantee a consistent and reproducible build environment, the entire project workspace is constructed within a Podman container. This process is automated by a Containerfile that begins with a clean Ubuntu base image and systematically installs all necessary dependencies.
+
+The setup procedure involves several key steps. First, essential system packages such as python3, pip, venv, and git are installed. Following the installation of dependencies, a Python virtual environment is created to ensure that the west tool and its own dependencies are isolated from the system's Python installation. Once the virtual environment is activated, west is installed using pip.
+
+With the build tools in place, the project workspace is initialized. The west init command is executed, pointing to the project's manifest repository. This is followed by west update, which reads the manifest file and clones the Zephyr source code and all other required modules, such as hal\_espressif and mcuboot, into the workspace. The complete Containerfile that encapsulates this entire setup process is detailed below.
+
+A final manual configuration step is required to link the workspace with the Zephyr build system. After the \texttt{west update} command completes, the local west configuration file, located at \texttt{EEE4022S-Workspace/.west/config}, must be modified. The following lines need to be appended to this file:
+
+\begin{verbatim}
+[zephyr]
+base = zephyr
+\end{verbatim}
+
+This configuration explicitly tells the \texttt{west} tool that the \texttt{zephyr} directory, cloned as a project dependency, is the Zephyr base to be used for all subsequent build and flash commands. With this setting in place, the workspace is fully configured and ready for firmware development.
+
+\subsection{Project Directory Structure}
+
+The project's directory structure is intentionally modeled after the official Zephyr \texttt{example-application} repository, which represents a best-practice approach for creating scalable and maintainable freestanding applications. This structure is designed to cleanly separate application code, custom drivers, and dependency management.
+
+The key organizational principles adopted are as follows:
+
+\begin{enumerate}
+    \item \textbf{Multi-Application Support:} The root of the repository, which serves as the \texttt{west} manifest, is designed to house multiple distinct firmware targets. Each application is contained within its own directory, prefixed with \texttt{app-} (e.g., \texttt{app-fota-client}). This convention allows for different applications to coexist within a single version-controlled project while sharing common modules and drivers.
+
+    \item \textbf{Custom Driver Organization:} All custom, out-of-tree drivers are consolidated under a top-level \texttt{drivers/} directory. This separates hardware-specific implementation details, such as the driver for the \texttt{simcom-a76xx} modem, from the main application logic. This modular approach promotes code reuse and simplifies maintenance, as the driver code is not tightly coupled with any single application.
+
+    \item \textbf{Public API Headers:} A corresponding \texttt{include/} directory is used to store the public header files for the custom drivers. This follows standard software engineering practices, creating a clear distinction between the driver's public API (the functions an application can call) and its private implementation.
+\end{enumerate}
+
+Adhering to this established structure ensures that the project remains organized, scalable, and easy for other developers familiar with the Zephyr ecosystem to navigate.
+
+\subsection{CMakeLists.txt Structure and Rationale}
+
+The project's build system is organized using a hierarchical set of \texttt{CMakeLists.txt} files. At the top level, the main \texttt{CMakeLists.txt} sets up project-wide configurations and include directories:
+
+\begin{verbatim}
+zephyr_syscall_include_directories(include)
+zephyr_include_directories(include)
+
+add_subdirectory(drivers)
+add_subdirectory(lib)
+\end{verbatim}
+
+The commands \texttt{zephyr\_syscall\_include\_directories()} and \texttt{zephyr\_include\_directories()} establish the paths to header files needed throughout the project. Unlike standard CMake projects, most CMake commands here are not the vanilla CMake commands; instead, Zephyr provides wrapper commands, all prefixed with \texttt{zephyr\_}, which encapsulate project-specific behavior and best practices. These lines are largely boilerplate for setting up the Zephyr build environment.
+
+The most important aspect of this setup is the use of \texttt{add\_subdirectory(...)}, which defines a hierarchical chain of build configurations. When a subdirectory is added, its own \texttt{CMakeLists.txt} is processed in the context of the parent, inheriting global settings while allowing subdirectory-specific configuration. This means that any configuration in a given \texttt{CMakeLists.txt} applies to the files in that directory and all of its descendants, creating a structured and modular build process.
+
+To avoid unnecessary compilation, environment variables can specify which modules should be included in the build. This is largely managed through \texttt{Kconfig}, as described in Section XXX. Zephyr provides the command \texttt{add\_subdirectory\_ifdef(Variable directory-name)} to conditionally add a subdirectory only if a corresponding configuration variable is enabled.
+
+CMake operates at a higher level of abstraction than directly invoking the compiler. It specifies what to build and how components relate to one another, leaving the actual compilation commands to the underlying build system. In the case of Zephyr, the CMake configuration is ultimately converted into \texttt{ninja} build files, which handle the low-level compilation of the application.
+
+Other CMake commands in the project serve similar organizational or configuration purposes and can generally be considered boilerplate for setting up the Zephyr build environment. The key takeaway is that the hierarchical structure defined by \texttt{add\_subdirectory(...)}—combined with conditional inclusion—enables modular, maintainable, and scalable builds.
+
+In addition to the module-level \texttt{CMakeLists.txt} files, each specific application in the project has its own \texttt{CMakeLists.txt}. These files typically start with:
+
+\begin{verbatim}
+cmake_minimum_required(VERSION 3.13.1)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+
+project(app LANGUAGES C)
+
+target_sources(app PRIVATE src/main.c)
+\end{verbatim}
+
+Unlike the module-level files, these app-specific \texttt{CMakeLists.txt} describe exactly which source files are needed to compile the application and may specify additional files to include or compile that are not already handled by the hierarchical module chain. In essence, they define the entry point and composition of a specific app while still inheriting global configurations and include paths from the parent CMakeLists.txt files.
+
+
+\section{Developing a Custom Modem Driver}
+
+\subsection{Limitations of The Existing Driver}
+While the Zephyr RTOS provides a generic cellular driver (\texttt{modem\_cellular}), it was determined to be a suboptimal choice for this project for several key reasons, necessitating the development of a custom, device-specific driver for the Simcom A7670 modem.
+
+\begin{itemize}
+    \item \textbf{Inefficiency:} The generic driver is based on an onboard networking model, utilizing the Point-to-Point Protocol (PPP). This architecture forces the host microcontroller (the ESP32) to run Zephyr's entire native TCP/IP stack. For a resource-constrained embedded system, the significant CPU and RAM overhead required to manage sockets, construct packets, and handle protocols like DNS and DHCP was deemed unacceptable, especially for a project requiring a lightweight solution.
+    
+    \item \textbf{Application-Specific Requirements:} The primary goal of this project is to integrate with the UpdateHub firmware-over-the-air (FOTA) platform, which operates over CoAP. While the generic driver could provide basic IP connectivity, implementing the CoAP client functionality would be more efficient by leveraging the modem's internal networking stack rather than consuming host resources. A minimal, custom driver provides the direct control needed for this specific application.
+
+    \item \textbf{Hardware Mismatch:} The generic driver assumes a standard power-on procedure. The A7670, however, has specific timing requirements. A custom driver allowed for the implementation of a robust \texttt{modem\_autobaud} function that actively probes the modem until it confirms responsiveness. This is a far more reliable startup method than the simple timed delays assumed by a generic implementation, and complexity was further reduced by fixing the baud rate at 115200.
+\end{itemize}
+
+\subsection{Architectural Approach: Offloaded Networking}
+To address the limitations of the generic driver, this project adopted the \textit{socket offload} architecture. In this model, the modem is treated as a "smart co-processor" that contains its own powerful, built-in TCP/IP stack capable of handling both TCP and UDP connections.
+
+The responsibility of the host MCU is significantly reduced. Instead of constructing raw IP packets, the MCU's driver sends high-level, text-based commands over a UART interface, such as \texttt{AT+CIPOPEN} to request the use of a socket, followed by \texttt{AT+CIPSEND} to send data to a specific destination. The modem itself handles all the low-level complexities of the network connection, including session management and packetization. This \textit{offloads} the networking workload from the MCU, freeing up its resources for the primary application logic and resulting in a more efficient and responsive system.
+
+% \begin{figure}[h]
+%     \centering
+%     % You can create a simple diagram for this and uncomment this section.
+%     % \includegraphics[width=0.8\textwidth]{placeholder_diagram.png}
+%     \caption{Architectural comparison of Onboard vs. Offloaded Networking.}
+%     \label{fig:offload_arch}
+% \end{figure}
+
+\subsection{Implementation Language: The AT Command Set}
+The primary method for controlling a cellular modem and implementing a socket offload driver is through the AT command set. Originally developed by Hayes in the 1980s, the "ATtention" command set is a human-readable, text-based language sent over a serial interface. While the basic structure is standardized, the specific commands for advanced features like TCP/IP networking can vary significantly between modem families. The A7670 modem follows the AT command set of the A76xx series, which is distinct from other Simcom modems like the SIM7080, necessitating a careful translation and adaptation of the driver logic.
+
+
+Commands follow a standard structure:
+\begin{itemize}
+    \item \textbf{Prefix:} All commands begin with the prefix \texttt{AT}.
+    \item \textbf{Command:} A specific command, often starting with \texttt{+} for extended commands (e.g., \texttt{AT+CSQ} for signal quality).
+    \item \textbf{Action Suffix:}
+    \begin{itemize}
+        \item \texttt{?} (Read): Queries the current value of a parameter (e.g., \texttt{AT+CREG?}).
+        \item \texttt{=} (Set): Sets a new value for a parameter (e.g., \texttt{AT+COPS=0}).
+        \item \texttt{=?} (Test): Asks the modem to list all supported values for a parameter.
+    \end{itemize}
+\end{itemize}
+This command-and-response protocol forms the fundamental language the driver must speak to manage the modem's state and operations.
+
+\subsection{Modem Communication Patterns}
+A robust driver must be architected to handle several distinct types of modem responses, each with its own timing and purpose.
+
+\begin{itemize}
+    \item \textbf{Solicited vs. Unsolicited Responses:} This is the most critical distinction. A \textit{solicited} response is a direct answer to a command just sent (e.g., \texttt{+CSQ: 23,0} in reply to \texttt{AT+CSQ?}). In contrast, an \textit{Unsolicited Result Code (URC)} is a message the modem sends on its own initiative to notify the host of an external event, such as an incoming call (\texttt{RING}) or a network connection being established (\texttt{+CGEV: ME PDN ACT 1}). A driver must have a background process constantly listening for URCs to accurately track the modem's state.
+
+    \item \textbf{Response Types:}
+    \begin{itemize}
+        \item \textbf{Final Result Codes:} Every command execution concludes with a final code, typically \texttt{OK} for success or \texttt{ERROR} for failure. The driver must block and wait for this code to confirm a synchronous command has finished.
+        \item \textbf{Intermediate Responses:} These are data-bearing responses that arrive \textit{before} the final \texttt{OK} or \texttt{ERROR}.
+        \item \textbf{Data Input Prompt (\texttt{>}):} This is a special response. For commands like \texttt{AT+CIPSEND}, the modem replies with a single \texttt{>} character to signal that it is now in "data input mode" and is ready to receive the raw data payload from the host. The driver must handle this state separately from normal command responses.
+    \end{itemize}
+\end{itemize}
+
+
+\section{Porting the SIM7080 Driver for the A7670 Modem}
+
+The core of this project involved adapting an existing Zephyr RTOS driver for the Simcom SIM7080 modem to create a new, custom socket offload driver for the Simcom A7670. While both modems are from the same manufacturer, their hardware behavior and AT command sets have critical differences. This section details the initial phase of the porting process, focusing on the integration with the Zephyr build system.
+
+\subsection{Phase 1: Build System Integration and Initial Scaffolding}
+The first step was to establish the basic structure of the new driver within the Zephyr build environment. This involved creating the necessary `Kconfig` and `CMakeLists.txt` files to ensure the driver could be correctly configured and compiled as part of a Zephyr application. The existing SIM7080 driver was used as a template for this process.
+
+\subsubsection{Kconfig Integration}
+The Kconfig system allows a driver to be conditionally included in a project build via configuration flags set in the `prj.conf` file. A new `Kconfig` file was created for the A7670 driver by copying the file from the SIM7080 driver and performing a "find and replace" on all relevant identifiers. Key changes included:
+
+\begin{itemize}
+    \item Renaming the main configuration symbol from \texttt{CONFIG\_MODEM\_SIM7080} to \texttt{CONFIG\_MODEM\_A76XX}.
+    \item Updating all descriptive text and help messages to refer to the A76XX series.
+    \item Ensuring all dependencies on other Zephyr subsystems (such as \texttt{NETWORKING} and \texttt{GPIO}) were preserved.
+\end{itemize}
+
+This process successfully created the necessary configuration symbols to control the driver's compilation and define its dependencies within the Zephyr ecosystem.
+
+\subsubsection{CMake Build Configuration}
+The `CMakeLists.txt` file is responsible for defining which source files are compiled and what include paths are available to them. The initial configuration conditionally compiled the new `simcom-a76xx.c` driver file based on the Kconfig symbols:
+
+\begin{verbatim}
+if (CONFIG_MODEM AND CONFIG_MODEM_A76XX)
+    ...
+endif()
+\end{verbatim}
+
+A significant challenge emerged during this phase. The driver relies heavily on internal "helper" components from the Zephyr modem subsystem, such as \texttt{modem\_context.h}, \texttt{modem\_cmd\_handler.h}, and \texttt{modem\_socket.h}. These headers are not part of Zephyr's public API and are therefore not exposed in the global include paths. To resolve this, a pragmatic workaround was implemented: the internal Zephyr include paths were explicitly added to the driver's compilation scope using \texttt{zephyr\_library\_include\_directories}.
+
+\begin{verbatim}
+if (CONFIG_MODEM_A76XX)
+    zephyr_library_sources(simcom-a76xx.c)
+    
+    # Add driver's own public include directory
+    zephyr_library_include_directories(../../../include)
+    
+    # Add internal Zephyr paths needed by the driver
+    zephyr_library_include_directories(${ZEPHYR_BASE}/drivers/modem)
+    zephyr_library_include_directories(${ZEPHYR_BASE}/subsys/net/ip)
+    zephyr_library_include_directories(${ZEPHYR_BASE}/subsys/net/lib/sockets)
+endif()
+\end{verbatim}
+
+A further complication arose because the main application (\texttt{main.c}) needs to call the public API functions of the driver (e.g., \texttt{mdm\_a76xx\_power\_on()}). The driver's public header file, \texttt{simcom-a76xx.h}, exposes data types that depend on the same internal Zephyr headers. This created a visibility issue: while the driver itself could now see the internal headers, the main application could not, leading to compilation errors. To resolve this, the same internal include paths were also added to the \texttt{CMakeLists.txt} of the main application. While this creates a tight coupling between the application and the internal structure of the Zephyr kernel, it was a necessary and effective workaround to achieve a functional build.
+
+\subsection{Phase 2: Driver Logic and AT Command Translation}
+Following the initial structural port, the core technical challenge was to adapt the driver's logic to the specific behavior and command set of the A7670 modem. This was a systematic process that involved analyzing the existing driver, consulting the A76XX Series AT Command Manual, and implementing the necessary changes.
+
+\subsubsection{Leveraging the Zephyr Modem Subsystem}
+A foundational step was to understand the abstractions provided by the Zephyr modem subsystem to avoid "reinventing the wheel." The SIM7080 driver was built upon a set of powerful but non-public helper components. An analysis of these components revealed a robust framework for handling modem interactions, which was adopted for the new driver:
+\begin{itemize}
+    \item \textbf{The Command Handler (\texttt{modem\_cmd\_handler}):} This component provides the core engine for parsing incoming data from the modem. It can match solicited responses and Unsolicited Result Codes (URCs) against a list of pre-defined handlers, automatically splitting responses into arguments and dispatching them to the correct C function.
+    \item \textbf{The Socket Abstraction (\texttt{modem\_socket}):} This layer provides a generic way to manage the modem's internal connection "slots" (e.g., Link Numbers 0-9) and map them to standard Zephyr file descriptors, simplifying the implementation of the socket offload API.
+    \item \textbf{The Synchronous Send Function (\texttt{modem\_cmd\_send}):} This helper function encapsulates the logic of sending a command, blocking on a semaphore, and waiting for a final \texttt{OK} or \texttt{ERROR} response, complete with a timeout. This greatly simplified the implementation of synchronous command-response sequences.
+\end{itemize}
+By reusing this existing framework, the porting effort could focus on the unique aspects of the A7670 rather than on low-level parsing and state management.
+
+\subsubsection{The AT Command Translation Process}
+The most intensive part of the porting effort was the translation of the AT command set. The process for each functional block (e.g., network activation, socket connection) was as follows:
+\begin{enumerate}
+    \item \textbf{Analyze High-Level Goal:} The purpose of the original AT command in the SIM7080 driver was identified. For example, the goal of \texttt{AT+CNACT=0,1} was to "activate the PDP context."
+    \item \textbf{Consult A76XX Manual:} The official A76XX Series AT Command Manual was searched for the equivalent command.
+    \item \textbf{Implement and Adapt:} The C code was modified to reflect the differences in the new command's syntax, parameters, and response patterns.
+\end{enumerate}
+
+This process often revealed significant differences that required more than a simple string replacement. For example, a direct translation was possible for activating the PDP context, which changed from \texttt{AT+CNACT=0,1} on the SIM7080 to \texttt{AT+CGACT=1,1} on the A7670. However, a more complex adaptation was required for the socket connection commands, which changed from the \texttt{AT+CA*} family to the \texttt{AT+CIP*} family, necessitating a complete rewrite of the socket offload functions and their associated response handlers.
